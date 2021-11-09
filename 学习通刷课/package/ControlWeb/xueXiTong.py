@@ -7,6 +7,7 @@ import time
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from package.disPlay import DisPlay
 from package.ControlWeb import course
 from package.ControlWeb.task.getAnswer import GetAnswer
 from package.ControlWeb.task.PPT import PPT
@@ -14,13 +15,25 @@ from package.ControlWeb.task.video import Video
 from package.ControlWeb.task.homework import Homework
 
 class XueXiTong:
-    def __init__(self, chromePath, driverPath, user):
+    def __init__(self, chromePath, driverPath, user, browserKey):
         self.__user = user
         self.__driverPath = driverPath
-        option = webdriver.ChromeOptions()
-        option.binary_location = chromePath
-        option.add_experimental_option('excludeSwitches', ['enable-logging'])
-        self.__driver = webdriver.Chrome(executable_path=self.__driverPath, options=option)
+
+        if browserKey == 0:
+            # 显示浏览器
+            option = webdriver.ChromeOptions()
+            option.binary_location = chromePath
+            option.add_experimental_option('excludeSwitches', ['enable-logging'])
+            self.__driver = webdriver.Chrome(executable_path=self.__driverPath, options=option)
+        else:
+            # 不显示浏览器
+            option = webdriver.ChromeOptions()
+            option.binary_location = chromePath
+            option.add_argument('headless')             # 浏览器不提供可视化界面
+            option.add_argument('--mute-audion')        # 浏览器静音播放
+            option.add_experimental_option('excludeSwitches', ['enable-logging'])
+            self.__driver = webdriver.Chrome(executable_path=self.__driverPath, options=option)
+
 
         # 实例化章节对象
         self.__chapter = course.Chapter()
@@ -47,7 +60,10 @@ class XueXiTong:
     # 进入课程
     def enterCourse(self, courseIndex):
         # 点击进入课程
-        self.course.getCourseObjectList()[courseIndex].click()
+        item = self.course.getCourseObjectList()[courseIndex]
+        self.__driver.execute_script("arguments[0].scrollIntoView(false);", item)
+        time.sleep(1)
+        item.click()
         # 保存课程名
         self.course.nowCourseName = self.course.getCourseNameList()[courseIndex]
 
@@ -56,10 +72,17 @@ class XueXiTong:
         self.__driver.switch_to.window(headLes[1])
         time.sleep(1)
 
-        self.__driver.find_element(By.CSS_SELECTOR, '[class="nav_side"]')\
-                     .find_element(By.CSS_SELECTOR, '[class="sideCon"]')\
-                     .find_element(By.CSS_SELECTOR, '[class="nav-content "]')\
-                     .find_element(By.CSS_SELECTOR, '[dataname="zj-stu"]').click()
+        # 测试中发现不同电脑打开学习通章节元素的dataname值不同
+        try:
+            self.__driver.find_element(By.CSS_SELECTOR, '[class="nav_side"]')\
+                         .find_element(By.CSS_SELECTOR, '[class="sideCon"]')\
+                         .find_element(By.CSS_SELECTOR, '[class="nav-content "]')\
+                         .find_element(By.CSS_SELECTOR, '[dataname="zj-stu"]').click()
+        except Exception:
+            self.__driver.find_element(By.CSS_SELECTOR, '[class="nav_side"]')\
+                         .find_element(By.CSS_SELECTOR, '[class="sideCon"]')\
+                         .find_element(By.CSS_SELECTOR, '[class="nav-content "]')\
+                         .find_element(By.CSS_SELECTOR, '[dataname="zj"]').click()
         # 获取章节
         self.__chapter.getChapterObjectAndName(self.__driver)
         return self.__chapter.getChaptersNameList()
@@ -76,6 +99,7 @@ class XueXiTong:
 
         # 收起目录栏
         self.__driver.find_element(By.CSS_SELECTOR, '[class="switchbtn"]').click()
+        time.sleep(1)
 
         # 循环当前课程的所有章节
         while chapterIndex <= self.__chapter.getLength():
@@ -90,24 +114,24 @@ class XueXiTong:
                                     .find_element(By.CSS_SELECTOR, '[class="prev_ul"]')\
                                     .find_elements(By.TAG_NAME, 'li')
                 print("当前课程有{}个选项卡".format(len(prevTableList)))
-                print("\033[1;31;40m有选选项卡的课程大概率刷课失败\033[0m")
             except Exception:
                 print("当前章节没有选项卡")
 
-            # # 当前功能等待测试
-            # # 如果没有找到选项卡则执行一次
-            # lenOfPrevTableList = len(prevTableList) if len(prevTableList) != 0 else 1
-            lenOfPrevTableList = 1
+            # 如果没有找到选项卡则执行一次
+            lenOfPrevTableList = len(prevTableList) if len(prevTableList) != 0 else 1
             for tableIndex in range(lenOfPrevTableList):
                 if tableIndex != 0:
+                    # 选项卡移动到屏幕中
+                    self.__driver.execute_script("arguments[0].scrollIntoView(false);",
+                                                 prevTableList[tableIndex].find_element(By.TAG_NAME, 'div'))
                     prevTableList[tableIndex].find_element(By.TAG_NAME, 'div').click()
                     time.sleep(1)
-
                 # 进入第一层iframe
                 self.__driver.switch_to.frame("iframe")
                 iframeList = self.__driver.find_elements(By.TAG_NAME, 'iframe')
                 print("当前小节有{}个任务点".format(len(iframeList)))
                 for i in range(len(iframeList)):
+                    print("当前为第{}个任务点".format(i+1))
                     self.__driver.switch_to.frame(iframeList[i])
                     try:
                         print("尝试视频打开任务点")
@@ -117,6 +141,7 @@ class XueXiTong:
                         print("当前任务点不是视频")
                         try:
                             print("尝试ppt打开任务点")
+                            DisPlay.displayWarning("学习通ppt学习点更新，当前无法学习ppt")
                             powerPoint = PPT(self.__driver)
                             powerPoint.finish()
                         except Exception:
@@ -128,12 +153,14 @@ class XueXiTong:
                                 homework.submitOrSave()
                             except Exception:
                                 print("当前任务点不是题目\n当前任务点无法解决，跳过当前任务点")
+                    DisPlay.displayPart()
                     self.__driver.switch_to.default_content()
                     self.__driver.switch_to.frame("iframe")
                     iframeList = self.__driver.find_elements(By.TAG_NAME, 'iframe')
                 self.__driver.switch_to.default_content()
                 time.sleep(2)
 
+            # 保存进度
             subjectData.modifyClassData(self.__user.getUserName(),
                                         self.course.nowCourseName,
                                         self.__chapter.getChaptersNameList()[chapterIndex])
@@ -142,6 +169,5 @@ class XueXiTong:
             chapterIndex += 1
 
             # 点击下一章
-            self.__driver.find_element(By.CSS_SELECTOR,
-                                       '[class="jb_btn jb_btn_92 fs14 prev_next next"]').click()
+            self.__driver.find_element(By.CSS_SELECTOR, '[class="jb_btn jb_btn_92 fs14 prev_next next"]').click()
         print("当前章节以全部完成")
