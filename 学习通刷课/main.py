@@ -39,7 +39,7 @@ browserConfigurationPath = "{}\\data\\browser_configuration.json".format(nowPath
 
 userData = UserData(userDataPath)
 browser = BrowserConfiguration(browserConfigurationPath)
-while True and isExpiration:
+while True:
     browserInf = "关闭浏览器显示" if browser.getState() == 1 else "开启浏览器显示"
     print("选择模式（{}）".format(browserInf))
     function = "1、创建新用户，2、使用已有用户（当前已有{}个用户）" \
